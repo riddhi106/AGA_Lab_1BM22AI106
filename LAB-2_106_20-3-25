@@ -1,0 +1,70 @@
+# @title classroom question_20-3-24 q1
+#Implement a denoising autoencoder that removes noise from images. 
+#Train using dataset with artificially added noise.
+#Compare noisy and reconstructed images.
+import tensorflow as tf
+from tensorflow.keras import layers, models
+import numpy as np
+import matplotlib.pyplot as plt
+from tensorflow.keras.datasets import cifar10
+
+# Load CIFAR-10 dataset
+(x_train, _), (x_test, _) = cifar10.load_data()
+
+# Normalize the images to the range [0, 1]
+x_train, x_test = x_train / 255.0, x_test / 255.0
+
+# Add random noise to the images
+def add_noise(images, noise_factor=0.5):
+    noisy_images = images + noise_factor * np.random.normal(loc=0.0, scale=1.0, size=images.shape)
+    noisy_images = np.clip(noisy_images, 0., 1.)  # Ensure that pixel values are within the range [0, 1]
+    return noisy_images
+
+# Add noise to training and test data
+x_train_noisy = add_noise(x_train)
+x_test_noisy = add_noise(x_test)
+
+# Denoising Autoencoder Model
+input_img = layers.Input(shape=(32, 32, 3))  # CIFAR-10 images have size 32x32 with 3 color channels (RGB)
+x = layers.Conv2D(32, (3, 3), activation='relu', padding='same')(input_img)
+x = layers.MaxPooling2D((2, 2), padding='same')(x)
+x = layers.Conv2D(64, (3, 3), activation='relu', padding='same')(x)
+x = layers.MaxPooling2D((2, 2), padding='same')(x)
+x = layers.Conv2D(128, (3, 3), activation='relu', padding='same')(x)
+encoded = layers.MaxPooling2D((2, 2), padding='same')(x)
+
+x = layers.Conv2D(128, (3, 3), activation='relu', padding='same')(encoded)
+x = layers.UpSampling2D((2, 2))(x)
+x = layers.Conv2D(64, (3, 3), activation='relu', padding='same')(x)
+x = layers.UpSampling2D((2, 2))(x)
+x = layers.Conv2D(32, (3, 3), activation='relu', padding='same')(x)
+x = layers.UpSampling2D((2, 2))(x)
+decoded = layers.Conv2D(3, (3, 3), activation='sigmoid', padding='same')(x)
+
+autoencoder = models.Model(input_img, decoded)
+
+# Compile the model
+autoencoder.compile(optimizer='adam', loss='binary_crossentropy')
+
+# Train the Denoising Autoencoder
+autoencoder.fit(x_train_noisy, x_train, epochs=10, batch_size=128, validation_data=(x_test_noisy, x_test))
+
+# Predict the reconstructed images
+decoded_imgs = autoencoder.predict(x_test_noisy)
+
+# Compare noisy and reconstructed images
+n = 10  # Number of images to display
+plt.figure(figsize=(20, 4))
+for i in range(n):
+    # Display original noisy image
+    ax = plt.subplot(2, n, i + 1)
+    plt.imshow(x_test_noisy[i])
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
+    
+    # Display reconstructed image
+    ax = plt.subplot(2, n, i + 1 + n)
+    plt.imshow(decoded_imgs[i])
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
+plt.show()
