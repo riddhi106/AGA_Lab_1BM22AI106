@@ -1,0 +1,112 @@
+# @title classroom question_20-3-24 q2
+#Implement a Variational Autoencoder (VAE) using TensorFlow/Keras.
+#Train on the dataset and generate new images.
+#Visualize the latent space.
+import tensorflow as tf
+from tensorflow.keras import layers, models
+import numpy as np
+import matplotlib.pyplot as plt
+from tensorflow.keras.datasets import cifar100
+
+# Load CIFAR-100 dataset
+(x_train, _), (x_test, _) = cifar100.load_data()
+
+# Normalize the images to the range [0, 1]
+x_train, x_test = x_train / 255.0, x_test / 255.0
+
+# VAE components
+latent_dim = 2  # Latent space dimension for visualization
+
+# Encoder
+inputs = layers.Input(shape=(32, 32, 3))  # CIFAR-100 images have size 32x32 with 3 color channels (RGB)
+x = layers.Conv2D(32, (3, 3), activation='relu', strides=2, padding='same')(inputs)
+x = layers.Conv2D(64, (3, 3), activation='relu', strides=2, padding='same')(x)
+x = layers.Conv2D(128, (3, 3), activation='relu', strides=2, padding='same')(x)
+x = layers.Flatten()(x)
+x = layers.Dense(128, activation='relu')(x)
+z_mean = layers.Dense(latent_dim)(x)
+z_log_var = layers.Dense(latent_dim)(x)
+
+# Sampling function
+def sampling(args):
+    z_mean, z_log_var = args
+    batch = tf.shape(z_mean)[0]
+    dim = tf.shape(z_mean)[1]
+    epsilon = tf.random.normal(shape=(batch, dim))
+    return z_mean + tf.exp(0.5 * z_log_var) * epsilon
+
+z = layers.Lambda(sampling, output_shape=(latent_dim,))([z_mean, z_log_var])
+
+# Decoder
+latent_inputs = layers.Input(shape=(latent_dim,))
+x = layers.Dense(128, activation='relu')(latent_inputs)
+x = layers.Dense(128 * 4 * 4, activation='relu')(x)  # Corresponds to image size 4x4 in channels
+x = layers.Reshape((4, 4, 128))(x)
+x = layers.Conv2DTranspose(128, (3, 3), activation='relu', strides=2, padding='same')(x)
+x = layers.Conv2DTranspose(64, (3, 3), activation='relu', strides=2, padding='same')(x)
+x = layers.Conv2DTranspose(32, (3, 3), activation='relu', strides=2, padding='same')(x)
+decoded = layers.Conv2DTranspose(3, (3, 3), activation='sigmoid', padding='same')(x)
+
+# VAE model
+encoder = models.Model(inputs, [z_mean, z_log_var, z])
+decoder = models.Model(latent_inputs, decoded)
+vae_output = decoder(encoder(inputs)[2])
+vae = models.Model(inputs, vae_output)
+
+# Custom loss function
+def vae_loss(inputs, vae_output, z_mean, z_log_var):
+    # Reconstruction loss (mean squared error)
+    xent_loss = tf.reduce_mean(tf.reduce_sum(tf.square(inputs - vae_output), axis=(1, 2, 3)))
+    
+    # KL Divergence loss
+    kl_loss = -0.5 * tf.reduce_mean(tf.reduce_sum(z_log_var - tf.square(z_mean) - tf.exp(z_log_var) + 1, axis=1))
+    
+    return xent_loss + kl_loss
+
+# Define a custom model class to compute the loss
+class VAE(tf.keras.Model):
+    def __init__(self, encoder, decoder):
+        super(VAE, self).__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+    
+    def call(self, inputs):
+        z_mean, z_log_var, z = self.encoder(inputs)
+        reconstructed = self.decoder(z)
+        loss = vae_loss(inputs, reconstructed, z_mean, z_log_var)
+        self.add_loss(loss)
+        return reconstructed
+
+# Create VAE model
+vae_model = VAE(encoder, decoder)
+
+# Compile model
+vae_model.compile(optimizer='adam')
+
+# Train the VAE
+vae_model.fit(x_train, epochs=10, batch_size=128, validation_data=(x_test, None))
+
+# Visualize the latent space
+def plot_latent_space(encoder, x_test):
+    z_mean, _, _ = encoder.predict(x_test)
+    plt.figure(figsize=(8, 6))
+    plt.scatter(z_mean[:, 0], z_mean[:, 1], alpha=0.5)
+    plt.xlabel('z[0]')
+    plt.ylabel('z[1]')
+    plt.show()
+
+plot_latent_space(encoder, x_test)
+
+# Generate new images
+def generate_images(decoder, n=10):
+    random_latent_vectors = np.random.normal(size=(n, latent_dim))
+    generated_images = decoder.predict(random_latent_vectors)
+    plt.figure(figsize=(20, 4))
+    for i in range(n):
+        ax = plt.subplot(1, n, i + 1)
+        plt.imshow(generated_images[i])
+        ax.get_xaxis().set_visible(False)
+        ax.get_yaxis().set_visible(False)
+    plt.show()
+
+generate_images(decoder)
