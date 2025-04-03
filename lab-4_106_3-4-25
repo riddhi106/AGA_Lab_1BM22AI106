@@ -1,0 +1,63 @@
+# @title classroom question_3-4-25_lab-4
+#Train an RBM on any dataset.
+#Extract meaningful features from input data.
+#Use extracted features for classification.
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.datasets import fetch_openml
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.neural_network import MLPClassifier
+from sklearn.metrics import classification_report
+from keras.layers import Input, Dense
+from keras.models import Model
+
+# Step 1: Load MNIST dataset
+mnist = fetch_openml('mnist_784', version=1)
+data = mnist['data'].values
+labels = mnist['target'].astype(int).values
+
+# Step 2: Preprocess the data (normalize)
+scaler = StandardScaler()
+data_normalized = scaler.fit_transform(data)
+
+# Step 3: Split the data into train and test sets
+X_train, X_test, y_train, y_test = train_test_split(data_normalized, labels, test_size=0.2, random_state=42)
+
+# Step 4: Define and train the RBM model using Keras
+input_dim = X_train.shape[1]
+encoding_dim = 100  # Number of features to extract (hidden layer size)
+
+# Define the autoencoder (RBM-like structure)
+input_layer = Input(shape=(input_dim,))
+encoded = Dense(encoding_dim, activation='relu')(input_layer)
+decoded = Dense(input_dim, activation='sigmoid')(encoded)
+
+autoencoder = Model(input_layer, decoded)
+encoder = Model(input_layer, encoded)
+
+autoencoder.compile(optimizer='adam', loss='binary_crossentropy')
+
+# Train the autoencoder to learn feature representations
+autoencoder.fit(X_train, X_train, epochs=10, batch_size=256, shuffle=True, validation_data=(X_test, X_test))
+
+# Step 5: Extract features from the trained encoder (RBM-like features)
+X_train_features = encoder.predict(X_train)
+X_test_features = encoder.predict(X_test)
+
+# Step 6: Train a classifier (MLP) on the extracted features
+mlp_classifier = MLPClassifier(hidden_layer_sizes=(100,), max_iter=300, random_state=42)
+mlp_classifier.fit(X_train_features, y_train)
+
+# Step 7: Evaluate the classifier
+y_pred = mlp_classifier.predict(X_test_features)
+print(classification_report(y_test, y_pred))
+
+# Optional: Visualize some results
+plt.figure(figsize=(10, 5))
+for i in range(10):
+    plt.subplot(2, 5, i+1)
+    plt.imshow(X_test[i].reshape(28, 28), cmap='gray')
+    plt.title(f"Pred: {y_pred[i]} Actual: {y_test[i]}")
+    plt.axis('off')
+plt.show()
