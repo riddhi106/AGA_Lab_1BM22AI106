@@ -1,0 +1,61 @@
+# @title l4-q2.3
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.datasets import fetch_openml
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.neural_network import BernoulliRBM, MLPClassifier
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import classification_report
+
+# Step 1: Load MNIST dataset
+mnist = fetch_openml('mnist_784', version=1, as_frame=False)
+data = mnist['data']
+labels = mnist['target'].astype(int)
+
+# Step 2: Preprocess the data (normalize)
+scaler = StandardScaler()
+data_normalized = scaler.fit_transform(data)
+
+# Step 3: Split the data into train and test sets
+X_train, X_test, y_train, y_test = train_test_split(data_normalized, labels, test_size=0.2, random_state=42)
+
+# Step 4: Define a Stacked RBM model
+rbm_1 = BernoulliRBM(n_components=512, learning_rate=0.01, batch_size=256, n_iter=10, verbose=1)
+rbm_2 = BernoulliRBM(n_components=256, learning_rate=0.01, batch_size=256, n_iter=10, verbose=1)
+rbm_3 = BernoulliRBM(n_components=128, learning_rate=0.01, batch_size=256, n_iter=10, verbose=1)
+
+# Train first RBM
+print("Training RBM 1...")
+rbm_1.fit(X_train)
+X_train_rbm1 = rbm_1.transform(X_train)
+X_test_rbm1 = rbm_1.transform(X_test)
+
+# Train second RBM
+print("Training RBM 2...")
+rbm_2.fit(X_train_rbm1)
+X_train_rbm2 = rbm_2.transform(X_train_rbm1)
+X_test_rbm2 = rbm_2.transform(X_test_rbm1)
+
+# Train third RBM
+print("Training RBM 3...")
+rbm_3.fit(X_train_rbm2)
+X_train_rbm3 = rbm_3.transform(X_train_rbm2)
+X_test_rbm3 = rbm_3.transform(X_test_rbm2)
+
+# Step 5: Train an MLP classifier on extracted RBM features
+mlp_classifier = MLPClassifier(hidden_layer_sizes=(128,), max_iter=300, random_state=42)
+mlp_classifier.fit(X_train_rbm3, y_train)
+
+# Step 6: Evaluate the classifier
+y_pred = mlp_classifier.predict(X_test_rbm3)
+print(classification_report(y_test, y_pred))
+
+# Optional: Visualize some results
+plt.figure(figsize=(10, 5))
+for i in range(10):
+    plt.subplot(2, 5, i+1)
+    plt.imshow(X_test[i].reshape(28, 28), cmap='gray')
+    plt.title(f"Pred: {y_pred[i]} Actual: {y_test[i]}")
+    plt.axis('off')
+plt.show()
