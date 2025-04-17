@@ -1,0 +1,60 @@
+# @title q7
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.datasets import fetch_california_housing
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.neural_network import BernoulliRBM
+from sklearn.linear_model import Ridge
+from sklearn.metrics import mean_squared_error, r2_score
+
+# Load California Housing dataset (real-valued)
+housing = fetch_california_housing()
+X = housing.data
+y = housing.target
+
+# Standardize features
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+# Train-test split
+X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+
+# ----- Step 1: Layer-wise RBM Training (simulating DBM) -----
+# First RBM Layer
+rbm1 = BernoulliRBM(n_components=64, learning_rate=0.01, n_iter=20, random_state=0, verbose=1)
+X_train_rbm1 = rbm1.fit_transform(X_train)
+
+# Second RBM Layer
+rbm2 = BernoulliRBM(n_components=32, learning_rate=0.01, n_iter=20, random_state=0, verbose=1)
+X_train_rbm2 = rbm2.fit_transform(X_train_rbm1)
+
+# ----- Step 2: Train downstream model using learned features -----
+# Transform test data using both RBMs
+X_test_rbm1 = rbm1.transform(X_test)
+X_test_rbm2 = rbm2.transform(X_test_rbm1)
+
+# Train a Ridge Regressor
+regressor = Ridge()
+regressor.fit(X_train_rbm2, y_train)
+
+# Predict and evaluate
+y_pred = regressor.predict(X_test_rbm2)
+mse = mean_squared_error(y_test, y_pred)
+r2 = r2_score(y_test, y_pred)
+
+print(f"\nMean Squared Error on Test Set: {mse:.4f}")
+print(f"R² Score on Test Set: {r2:.4f}")
+
+# ----- Step 3: Visualize RBM learned features (Fixed) -----
+plt.figure(figsize=(12, 6))
+for i in range(10):
+    plt.subplot(2, 5, i + 1)
+    plt.bar(range(X.shape[1]), rbm1.components_[i])
+    plt.title(f"Feature {i+1}")
+    plt.xticks([])  # Hide x-ticks for cleaner look
+
+plt.suptitle("RBM1 Learned Representations", fontsize=16)
+plt.subplots_adjust(top=0.85)  # Adjust spacing for suptitle
+plt.tight_layout(rect=[0, 0, 1, 0.95])
+plt.show()
